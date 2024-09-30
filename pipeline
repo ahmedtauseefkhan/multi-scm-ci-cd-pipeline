@@ -4,7 +4,7 @@ pipeline {
     
     tools {
         jdk 'jdk17'
-        maven 'Maven 3.8.6' // Ensure this matches the Maven installation name in Jenkins
+        maven 'Maven 3.8.6'
     }
     
     environment {
@@ -22,13 +22,11 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 script {
-                    // Checkout the first repository
                     checkout([$class: 'GitSCM',
                         branches: [[name: "${BRANCH_ONE}"]],
                         userRemoteConfigs: [[url: "https://github.com/ahmedtauseefkhan/${SERVICE_ONE}"]]
                     ])
                     
-                    // Checkout the second repository
                     dir('ci-cd-sample-java-project') { // Use a different directory for the second repo
                         checkout([$class: 'GitSCM',
                             branches: [[name: "${BRANCH_TWO}"]],
@@ -42,7 +40,6 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
-                    // Run SonarQube analysis using Maven
                     withSonarQubeEnv('SonarQube') {
                         sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=sample -Dsonar.host.url=http://localhost:9000'
                     }
@@ -53,7 +50,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build Docker image
+
                     sh 'pwd'
                     sh 'docker build -t ${DOCKER_IMAGE_NAME} .'
                 }
@@ -63,29 +60,26 @@ pipeline {
         stage('Push Docker Image to Docker Hub') {
             steps {
                 script {
-                    // Login to Docker Hub
                     docker.withRegistry("${env.DOCKER_REGISTRY}", "${env.DOCKER_CREDENTIALS_ID}") {
-                        // Push the Docker image
                         docker.image("${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}").push("${env.DOCKER_TAG}")
                     }
                 }
             }
         }
+        
+        stage('Email-notify') {
+            steps {
+                emailext attachLog: true, body: 'This is the extended Email body', subject: 'This is the extended Email subject', to: 'tauseef.khan@tkxel.io'
+            }
+        }
     }
     
     post {
-        success {
-            emailext (
-                subject: "Jenkins Build Successful",
-                body: "The build was successful.\n\nCheck the build at: ${JENKINS_URL}job/${JOB_NAME}/${BUILD_NUMBER}/",
-                to: "${EMAIL_RECIPIENTS}"
-            )
-        }
-        failure {
-            emailext (
-                subject: "Jenkins Build Failed",
-                body: "The build has failed.\n\nCheck the build at: ${JENKINS_URL}job/${JOB_NAME}/${BUILD_NUMBER}/",
-                to: "${EMAIL_RECIPIENTS}"
+        always {
+            mail(
+                to: "${env.EMAIL_RECIPIENTS}",
+                subject: "${env.JOB_NAME} - Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+                body: "Build Status: ${currentBuild.currentResult}\nCheck console output at ${env.BUILD_URL}"
             )
         }
     }
